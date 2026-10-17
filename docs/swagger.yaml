@@ -1,0 +1,188 @@
+basePath: /
+definitions:
+  main.apiResponse:
+    properties:
+      data: {}
+      error: {}
+      success:
+        type: boolean
+    type: object
+  main.changePasswordRequest:
+    properties:
+      confirm_password:
+        type: string
+      employee_id:
+        type: string
+      new_password:
+        type: string
+      old_password:
+        type: string
+    required:
+    - confirm_password
+    - employee_id
+    - new_password
+    - old_password
+    type: object
+  main.employeeRequest:
+    properties:
+      department:
+        type: string
+      designation:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - full_name
+    - phone
+    type: object
+  main.loginRequest:
+    properties:
+      employee_id:
+        type: string
+      password:
+        type: string
+    required:
+    - employee_id
+    - password
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: Go backend for office attendance, employee management, and first-login
+    password flows.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Office Attendance Management API
+  version: "1.0"
+paths:
+  /api/v1/admin/employees:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new employee profile and generates a temporary password.
+      parameters:
+      - description: Employee creation payload
+        in: body
+        name: employeeRequest
+        required: true
+        schema:
+          $ref: '#/definitions/main.employeeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+      summary: Create an employee
+      tags:
+      - admin
+  /api/v1/auth/change-password:
+    post:
+      consumes:
+      - application/json
+      description: Changes a password and records the password-change audit entry.
+      parameters:
+      - description: Password change payload
+        in: body
+        name: changePasswordRequest
+        required: true
+        schema:
+          $ref: '#/definitions/main.changePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+      summary: Change password
+      tags:
+      - auth
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates either an admin or an employee and returns a JWT.
+      parameters:
+      - description: Login payload
+        in: body
+        name: loginRequest
+        required: true
+        schema:
+          $ref: '#/definitions/main.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.apiResponse'
+      summary: Admin or employee login
+      tags:
+      - auth
+  /health:
+    get:
+      description: Returns the service status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - health
+swagger: "2.0"

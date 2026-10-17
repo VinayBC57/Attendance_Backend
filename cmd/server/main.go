@@ -59,10 +59,10 @@ type userSummary struct {
 }
 
 type loginResponseData struct {
-	Token                 string        `json:"token,omitempty"`
-	User                  userSummary   `json:"user,omitempty"`
-	RequirePasswordChange bool          `json:"require_password_change,omitempty"`
-	Message               string        `json:"message,omitempty"`
+	Token                 string      `json:"token,omitempty"`
+	User                  userSummary `json:"user,omitempty"`
+	RequirePasswordChange bool        `json:"require_password_change,omitempty"`
+	Message               string      `json:"message,omitempty"`
 }
 
 type apiResponse struct {

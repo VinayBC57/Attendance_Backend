@@ -9,14 +9,28 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	_ "attendance-backend/docs"
 	"attendance-backend/internal/auth"
 	"attendance-backend/internal/config"
 	"attendance-backend/internal/db"
 	"attendance-backend/internal/models"
 )
+
+// @title Office Attendance Management API
+// @version 1.0
+// @description Go backend for office attendance, employee management, and first-login password flows.
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @contact.email support@example.com
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+// @host localhost:8080
+// @BasePath /
 
 type loginRequest struct {
 	EmployeeID string `json:"employee_id" binding:"required"`
@@ -38,6 +52,31 @@ type employeeRequest struct {
 	Designation string `json:"designation"`
 }
 
+type userSummary struct {
+	EmployeeID string `json:"employee_id"`
+	Role       string `json:"role"`
+	FullName   string `json:"full_name"`
+}
+
+type loginResponseData struct {
+	Token                 string        `json:"token,omitempty"`
+	User                  userSummary   `json:"user,omitempty"`
+	RequirePasswordChange bool          `json:"require_password_change,omitempty"`
+	Message               string        `json:"message,omitempty"`
+}
+
+type apiResponse struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   interface{} `json:"error,omitempty"`
+}
+
+type employeeCreationResponseData struct {
+	EmployeeID        string `json:"employee_id"`
+	TemporaryPassword string `json:"temporary_password"`
+	Message           string `json:"message"`
+}
+
 func main() {
 	if err := config.Load(); err != nil {
 		log.Fatal("config load failed: ", err)
@@ -57,9 +96,9 @@ func main() {
 
 	r := gin.Default()
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	r.GET("/health", healthHandler)
 
 	r.POST("/api/v1/auth/login", func(c *gin.Context) {
 		loginHandler(c, gormDB, cfg.JWTSecret)
@@ -80,6 +119,29 @@ func main() {
 	}
 }
 
+// HealthCheck godoc
+// @Summary Health check
+// @Description Returns the service status.
+// @Tags health
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /health [get]
+func healthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// Login godoc
+// @Summary Admin or employee login
+// @Description Authenticates either an admin or an employee and returns a JWT.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param loginRequest body loginRequest true "Login payload"
+// @Success 200 {object} apiResponse
+// @Failure 400 {object} apiResponse
+// @Failure 401 {object} apiResponse
+// @Failure 500 {object} apiResponse
+// @Router /api/v1/auth/login [post]
 func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 	var payload loginRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -119,6 +181,19 @@ func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
+// ChangePassword godoc
+// @Summary Change password
+// @Description Changes a password and records the password-change audit entry.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param changePasswordRequest body changePasswordRequest true "Password change payload"
+// @Success 200 {object} apiResponse
+// @Failure 400 {object} apiResponse
+// @Failure 401 {object} apiResponse
+// @Failure 404 {object} apiResponse
+// @Failure 500 {object} apiResponse
+// @Router /api/v1/auth/change-password [post]
 func changePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 	var payload changePasswordRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -177,6 +252,18 @@ func changePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"message": "Password changed successfully", "first_login_completed": true}})
 }
 
+// CreateEmployee godoc
+// @Summary Create an employee
+// @Description Creates a new employee profile and generates a temporary password.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param employeeRequest body employeeRequest true "Employee creation payload"
+// @Success 201 {object} apiResponse
+// @Failure 400 {object} apiResponse
+// @Failure 409 {object} apiResponse
+// @Failure 500 {object} apiResponse
+// @Router /api/v1/admin/employees [post]
 func createEmployeeHandler(c *gin.Context, dbConn *gorm.DB, cfg config.Config) {
 	var payload employeeRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {

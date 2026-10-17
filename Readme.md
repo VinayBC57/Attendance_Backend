@@ -168,6 +168,95 @@ Request:
 }
 ```
 
+## API testing with curl
+
+Set the base URL before running these examples:
+
+```bash
+BASE_URL="http://localhost:8080"
+```
+
+### 1. Health check
+
+```bash
+curl -X GET "$BASE_URL/health"
+```
+
+### 2. Login
+
+```bash
+curl -X POST "$BASE_URL/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": "EMP-001",
+    "password": "TempPass@123"
+  }'
+```
+
+### 3. Change password
+
+```bash
+curl -X POST "$BASE_URL/api/v1/auth/change-password" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <employee_or_admin_jwt>" \
+  -d '{
+    "employee_id": "EMP-001",
+    "old_password": "TempPass@123",
+    "new_password": "Priya@2026",
+    "confirm_password": "Priya@2026"
+  }'
+```
+
+### 4. Create employee (admin)
+
+```bash
+curl -X POST "$BASE_URL/api/v1/admin/employees" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin_jwt>" \
+  -d '{
+    "full_name": "Ananya Sharma",
+    "email": "ananya.sharma@example.com",
+    "phone": "+919876543210"
+  }'
+```
+
+### 5. Get admin attendance
+
+```bash
+curl -X GET "$BASE_URL/api/v1/admin/attendance" \
+  -H "Authorization: Bearer <admin_jwt>"
+```
+
+### 6. Get attendance report
+
+```bash
+curl -X GET "$BASE_URL/api/v1/admin/reports/attendance?start_date=2026-10-01&end_date=2026-10-10" \
+  -H "Authorization: Bearer <admin_jwt>"
+```
+
+### 7. Employee check-in
+
+```bash
+curl -X POST "$BASE_URL/api/v1/employee/attendance/checkin" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <employee_jwt>" \
+  -d '{
+    "employee_id": "EMP-001",
+    "latitude": 19.0760,
+    "longitude": 72.8777,
+    "accuracy": 25
+  }'
+```
+
+Example response for valid location check-in:
+
+```json
+{
+  "message": "Attendance marked successfully",
+  "status": "checked_in"
+}
+```
+
 ## Local setup
 
 ### Prerequisites

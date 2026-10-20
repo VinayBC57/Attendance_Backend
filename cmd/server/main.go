@@ -64,12 +64,15 @@ func main() {
 	r.POST("/api/v1/auth/login", func(c *gin.Context) {
 		loginHandler(c, gormDB, cfg.JWTSecret)
 	})
+	r.GET("/api/v1/auth/me", auth.UserMiddleware(cfg.JWTSecret), func(c *gin.Context) {
+		currentUserHandler(c, gormDB)
+	})
 
 	r.POST("/api/v1/auth/change-password", func(c *gin.Context) {
 		changePasswordHandler(c, gormDB)
 	})
 
-	r.POST("/api/v1/admin/employees", func(c *gin.Context) {
+	r.POST("/api/v1/admin/employees", auth.AdminMiddleware(cfg.JWTSecret), func(c *gin.Context) {
 		createEmployeeHandler(c, gormDB, cfg)
 	})
 
@@ -106,9 +109,10 @@ func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 	data := gin.H{
 		"token": token,
 		"user": gin.H{
-			"employee_id": user.EmployeeID,
-			"role":        user.Role,
-			"full_name":   user.FullName,
+			"employee_id":             user.EmployeeID,
+			"role":                    user.Role,
+			"full_name":               user.FullName,
+			"is_first_login_required": user.IsFirstLoginRequired,
 		},
 	}
 	if user.IsFirstLoginRequired {
@@ -117,6 +121,26 @@ func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+func currentUserHandler(c *gin.Context, dbConn *gorm.DB) {
+	employeeID := c.GetString("employee_id")
+	var user models.User
+	if err := dbConn.Where("employee_id = ?", employeeID).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"code": "USER_NOT_FOUND", "message": "User not found."}})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"code": "USER_LOOKUP_FAILED", "message": "Unable to load user profile."}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": gin.H{
+		"employee_id":             user.EmployeeID,
+		"role":                    user.Role,
+		"full_name":               user.FullName,
+		"is_first_login_required": user.IsFirstLoginRequired,
+	}}})
 }
 
 func changePasswordHandler(c *gin.Context, dbConn *gorm.DB) {

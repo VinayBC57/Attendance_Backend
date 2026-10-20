@@ -126,6 +126,45 @@ Request body:
 }
 ```
 
+Example first-login response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "<jwt_token>",
+    "require_password_change": true,
+    "message": "Password change required on first login.",
+    "user": {
+      "employee_id": "EMP-001",
+      "role": "employee",
+      "full_name": "Ananya Sharma",
+      "is_first_login_required": true
+    }
+  }
+}
+```
+
+#### GET /api/v1/auth/me
+
+Returns the latest user profile from the database for the authenticated user. Requires a valid bearer JWT.
+
+Example response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "employee_id": "EMP-001",
+      "role": "employee",
+      "full_name": "Ananya Sharma",
+      "is_first_login_required": true
+    }
+  }
+}
+```
+
 #### POST /api/v1/auth/change-password
 
 Request body:
@@ -193,7 +232,14 @@ curl -X POST "$BASE_URL/api/v1/auth/login" \
   }'
 ```
 
-### 3. Change password
+### 3. Get the current user profile
+
+```bash
+curl -X GET "$BASE_URL/api/v1/auth/me" \
+  -H "Authorization: Bearer <jwt_token>"
+```
+
+### 4. Change password
 
 ```bash
 curl -X POST "$BASE_URL/api/v1/auth/change-password" \
@@ -207,7 +253,7 @@ curl -X POST "$BASE_URL/api/v1/auth/change-password" \
   }'
 ```
 
-### 4. Create employee (admin)
+### 5. Create employee (admin)
 
 ```bash
 curl -X POST "$BASE_URL/api/v1/admin/employees" \
@@ -220,21 +266,21 @@ curl -X POST "$BASE_URL/api/v1/admin/employees" \
   }'
 ```
 
-### 5. Get admin attendance
+### 6. Get admin attendance
 
 ```bash
 curl -X GET "$BASE_URL/api/v1/admin/attendance" \
   -H "Authorization: Bearer <admin_jwt>"
 ```
 
-### 6. Get attendance report
+### 7. Get attendance report
 
 ```bash
 curl -X GET "$BASE_URL/api/v1/admin/reports/attendance?start_date=2026-10-01&end_date=2026-10-10" \
   -H "Authorization: Bearer <admin_jwt>"
 ```
 
-### 7. Employee check-in
+### 8. Employee check-in
 
 ```bash
 curl -X POST "$BASE_URL/api/v1/employee/attendance/checkin" \

@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// Connect opens a PostgreSQL database connection using the supplied configuration.
 func Connect(cfg config.Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL()), &gorm.Config{})
 	if err != nil {
@@ -19,6 +20,7 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
+// Migrate creates or updates all application database tables.
 func Migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(&models.User{}, &models.Employee{}, &models.Attendance{}, &models.PasswordHistory{}); err != nil {
 		return err
@@ -27,6 +29,7 @@ func Migrate(db *gorm.DB) error {
 	return nil
 }
 
+// EnsureAdminUser seeds the default administrator if no admin account exists.
 func EnsureAdminUser(db *gorm.DB) error {
 	var count int64
 	if err := db.Model(&models.User{}).Where("role = ?", "admin").Count(&count).Error; err != nil {

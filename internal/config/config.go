@@ -24,6 +24,7 @@ type Config struct {
 
 var appConfig Config
 
+// Load reads environment values and populates the process-wide application configuration.
 func Load() error {
 	_ = godotenv.Load()
 
@@ -54,10 +55,12 @@ func Load() error {
 	return nil
 }
 
+// Get returns the currently loaded application configuration.
 func Get() Config {
 	return appConfig
 }
 
+// DatabaseURL builds the PostgreSQL connection string for GORM from config fields.
 func (c Config) DatabaseURL() string {
 	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable TimeZone=UTC",
@@ -69,6 +72,7 @@ func (c Config) DatabaseURL() string {
 	)
 }
 
+// getEnv reads a string environment variable or returns the supplied fallback.
 func getEnv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -76,6 +80,7 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+// getIntEnv reads a valid integer environment variable or returns the supplied fallback.
 func getIntEnv(key string, fallback int) int {
 	if value := os.Getenv(key); value != "" {
 		parsed, err := strconv.Atoi(value)

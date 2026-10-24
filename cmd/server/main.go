@@ -108,6 +108,7 @@ type employeeListResponse struct {
 	Size  int                `json:"page_size"`
 }
 
+// main initializes configuration, database state, middleware, routes, and the HTTP server.
 func main() {
 	if err := config.Load(); err != nil {
 		log.Fatal("config load failed: ", err)
@@ -149,11 +150,15 @@ func main() {
 		loginHandler(c, gormDB, cfg.JWTSecret)
 	})
 
+	r.GET("/api/v1/auth/me", auth.UserMiddleware(cfg.JWTSecret), func(c *gin.Context) {
+		currentUserHandler(c, gormDB)
+	})
+
 	r.POST("/api/v1/auth/change-password", func(c *gin.Context) {
 		changePasswordHandler(c, gormDB)
 	})
 
-	admin := r.Group("/api/v1/admin", requireAdmin(cfg.JWTSecret))
+	admin := r.Group("/api/v1/admin", auth.AdminMiddleware(cfg.JWTSecret))
 	admin.POST("/employees", func(c *gin.Context) {
 		createEmployeeHandler(c, gormDB, cfg)
 	})
@@ -177,6 +182,7 @@ func main() {
 	}
 }
 
+// healthHandler reports whether the HTTP service is accepting requests.
 // HealthCheck godoc
 // @Summary Health check
 // @Description Returns the service status.
@@ -188,6 +194,7 @@ func healthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// loginHandler authenticates an employee or admin and returns a signed JWT and login state.
 // Login godoc
 // @Summary Admin or employee login
 // @Description Authenticates either an admin or an employee and returns a JWT.
@@ -226,9 +233,10 @@ func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 	data := gin.H{
 		"token": token,
 		"user": gin.H{
-			"employee_id": user.EmployeeID,
-			"role":        user.Role,
-			"full_name":   user.FullName,
+			"employee_id":             user.EmployeeID,
+			"role":                    user.Role,
+			"full_name":               user.FullName,
+			"is_first_login_required": user.IsFirstLoginRequired,
 		},
 	}
 	if user.IsFirstLoginRequired {
@@ -239,6 +247,7 @@ func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
+// changePasswordHandler validates and persists a password update and creates an audit entry.
 // ChangePassword godoc
 // @Summary Change password
 // @Description Changes a password and records the password-change audit entry.
@@ -252,6 +261,37 @@ func loginHandler(c *gin.Context, dbConn *gorm.DB, secret string) {
 // @Failure 404 {object} apiResponse
 // @Failure 500 {object} apiResponse
 // @Router /api/v1/auth/change-password [post]
+// CurrentUser godoc
+// @Summary Get current authenticated user
+// @Description Returns the latest profile and first-login state for the authenticated user.
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} apiResponse
+// @Failure 401 {object} apiResponse
+// @Failure 404 {object} apiResponse
+// @Failure 500 {object} apiResponse
+// @Router /api/v1/auth/me [get]
+func currentUserHandler(c *gin.Context, dbConn *gorm.DB) {
+	employeeID := c.GetString("employee_id")
+	var user models.User
+	if err := dbConn.Where("employee_id = ?", employeeID).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"code": "USER_NOT_FOUND", "message": "User not found."}})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"code": "USER_LOOKUP_FAILED", "message": "Unable to load user profile."}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": gin.H{
+		"employee_id":             user.EmployeeID,
+		"role":                    user.Role,
+		"full_name":               user.FullName,
+		"is_first_login_required": user.IsFirstLoginRequired,
+	}}})
+}
+
 func changePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 	var payload changePasswordRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -310,6 +350,7 @@ func changePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"message": "Password changed successfully", "first_login_completed": true}})
 }
 
+// createEmployeeHandler creates a user and employee profile plus a temporary password.
 // CreateEmployee godoc
 // @Summary Create an employee
 // @Description Creates a new employee profile and generates a temporary password.
@@ -322,24 +363,7 @@ func changePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 // @Failure 409 {object} apiResponse
 // @Failure 500 {object} apiResponse
 // @Router /api/v1/admin/employees [post]
-func requireAdmin(secret string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
-		const prefix = "Bearer "
-		if len(header) <= len(prefix) || header[:len(prefix)] != prefix {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"code": "UNAUTHORIZED", "message": "Admin authentication required."}})
-			return
-		}
-		claims, err := auth.ParseToken(header[len(prefix):], secret)
-		if err != nil || claims["role"] != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"code": "FORBIDDEN", "message": "Admin access required."}})
-			return
-		}
-		c.Set("admin_employee_id", claims["employee_id"])
-		c.Next()
-	}
-}
-
+// employeeResponseFromModels combines user account and employee profile records into an API response.
 func employeeResponseFromModels(user models.User, profile models.Employee) employeeResponse {
 	return employeeResponse{
 		EmployeeID: user.EmployeeID, FullName: user.FullName, Email: user.Email, Phone: user.Phone,
@@ -349,6 +373,7 @@ func employeeResponseFromModels(user models.User, profile models.Employee) emplo
 	}
 }
 
+// loadEmployee fetches the employee user account and linked employee profile.
 func loadEmployee(dbConn *gorm.DB, employeeID string) (models.User, models.Employee, error) {
 	var user models.User
 	if err := dbConn.Where("employee_id = ? AND role = ?", employeeID, "employee").First(&user).Error; err != nil {
@@ -361,6 +386,7 @@ func loadEmployee(dbConn *gorm.DB, employeeID string) (models.User, models.Emplo
 	return user, profile, nil
 }
 
+// listEmployeesHandler returns a paginated, searchable employee directory for administrators.
 func listEmployeesHandler(c *gin.Context, dbConn *gorm.DB) {
 	search := c.Query("search")
 	page := 1
@@ -399,6 +425,7 @@ func listEmployeesHandler(c *gin.Context, dbConn *gorm.DB) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": employeeListResponse{Items: items, Total: total, Page: page, Size: pageSize}})
 }
 
+// getEmployeeHandler returns the account and profile details for one employee.
 func getEmployeeHandler(c *gin.Context, dbConn *gorm.DB) {
 	user, profile, err := loadEmployee(dbConn, c.Param("employee_id"))
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -412,6 +439,7 @@ func getEmployeeHandler(c *gin.Context, dbConn *gorm.DB) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": employeeResponseFromModels(user, profile)})
 }
 
+// updateEmployeeHandler validates and atomically updates an employee's user and profile records.
 func updateEmployeeHandler(c *gin.Context, dbConn *gorm.DB) {
 	var payload employeeUpdateRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -451,6 +479,7 @@ func updateEmployeeHandler(c *gin.Context, dbConn *gorm.DB) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": employeeResponseFromModels(user, profile), "message": "Employee updated successfully."})
 }
 
+// resetEmployeePasswordHandler generates a temporary password and records an admin reset audit entry.
 func resetEmployeePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 	user, _, err := loadEmployee(dbConn, c.Param("employee_id"))
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -480,7 +509,7 @@ func resetEmployeePasswordHandler(c *gin.Context, dbConn *gorm.DB) {
 			return err
 		}
 		return tx.Create(&models.PasswordHistory{
-			ID: uuid.New(), EmployeeID: user.EmployeeID, ChangedBy: c.GetString("admin_employee_id"),
+			ID: uuid.New(), EmployeeID: user.EmployeeID, ChangedBy: c.GetString("employee_id"),
 			OldPasswordHash: oldHash, NewPasswordHash: passwordHash, ChangeType: "admin_reset", ChangedAt: now, CreatedAt: now,
 		}).Error
 	}); err != nil {
@@ -560,6 +589,7 @@ func createEmployeeHandler(c *gin.Context, dbConn *gorm.DB, cfg config.Config) {
 	})
 }
 
+// init configures process timezone defaults before server startup.
 func init() {
 	_ = os.Setenv("TZ", "UTC")
 }

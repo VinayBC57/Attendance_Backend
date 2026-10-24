@@ -113,59 +113,151 @@ sequenceDiagram
 
 ## API endpoints
 
-### Authentication
+### Default seeded users
 
-#### POST /api/v1/auth/login
+The application seeds one default admin account automatically when the database is initialized.
 
-Request body:
+- Admin login:
+  - employee_id: `ADMIN-001`
+  - password: `Admin@123`
+  - email: `admin@company.com`
+
+Employees are not created by default. They are created by the admin through the employee creation endpoint. When an employee is created, the API returns:
+
+- `employee_id`
+- `temporary_password`
+
+The employee must log in using that generated temporary password and then change it on first login.
+
+### Authentication and login payloads
+
+#### Admin login
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": "ADMIN-001",
+    "password": "Admin@123"
+  }'
+```
+
+Example success response:
 
 ```json
 {
-  "employee_id": "EMP-001",
-  "password": "TempPass@123"
+  "success": true,
+  "data": {
+    "token": "<jwt_token>",
+    "user": {
+      "employee_id": "ADMIN-001",
+      "role": "admin",
+      "full_name": "System Admin"
+    }
+  }
 }
 ```
 
-#### POST /api/v1/auth/change-password
+Note: The admin account does not require a first-time password change after login because it is seeded as an active admin user.
 
-Request body:
+#### Employee login
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": "EMP-001",
+    "password": "H90CXYSBpc3#"
+  }'
+```
+
+Example response when the employee has not yet changed the first-time password:
 
 ```json
 {
-  "employee_id": "EMP-001",
-  "old_password": "TempPass@123",
-  "new_password": "Priya@2026",
-  "confirm_password": "Priya@2026"
+  "success": true,
+  "data": {
+    "token": "<jwt_token>",
+    "user": {
+      "employee_id": "EMP-001",
+      "role": "employee",
+      "full_name": "Test Employee"
+    },
+    "require_password_change": true,
+    "message": "Password change required on first login."
+  }
 }
 ```
+
+The main difference is that the admin is seeded with a permanent default password and the employee login uses a generated temporary password that must be changed before continuing.
+
+#### Change password
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/auth/change-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": "EMP-001",
+    "old_password": "H90CXYSBpc3#",
+    "new_password": "Priya@2026",
+    "confirm_password": "Priya@2026"
+  }'
+```
+
+Password requirements:
+
+- minimum 7 characters
+- at least 1 uppercase letter
+- at least 1 number
+- at least 1 special character
 
 ### Admin
 
-#### POST /api/v1/admin/employees
+#### Create employee
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/admin/employees" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "full_name": "Ananya Sharma",
+    "email": "ananya.sharma@example.com",
+    "phone": "+919876543210",
+    "department": "Engineering",
+    "designation": "Developer"
+  }'
+```
 
 Creates a new employee and generates a temporary password.
 
-#### GET /api/v1/admin/attendance
+#### Get attendance records
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/admin/attendance"
+```
 
 Returns attendance records for admin view.
 
-#### GET /api/v1/admin/reports/attendance
+#### Get attendance report
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/admin/reports/attendance?start_date=2026-10-01&end_date=2026-10-10"
+```
 
 Returns report data for a date range.
 
 ### Employee
 
-#### POST /api/v1/employee/attendance/checkin
+#### Check-in
 
-Request:
-
-```json
-{
-  "employee_id": "EMP-001",
-  "latitude": 19.0760,
-  "longitude": 72.8777,
-  "accuracy": 25
-}
+```bash
+curl -X POST "http://localhost:8080/api/v1/employee/attendance/checkin" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": "EMP-001",
+    "latitude": 19.0760,
+    "longitude": 72.8777,
+    "accuracy": 25
+  }'
 ```
 
 ## Admin employee management flow

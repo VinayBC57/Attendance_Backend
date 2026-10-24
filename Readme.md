@@ -168,6 +168,187 @@ Request:
 }
 ```
 
+## Admin employee management flow
+
+This flow is fully implemented.
+
+### 1. Login as admin
+
+On Windows PowerShell, store the token in a shell variable:
+
+```powershell
+$BASE_URL = "http://localhost:8080"
+$login = Invoke-RestMethod -Method Post -Uri "$BASE_URL/api/v1/auth/login" `
+  -ContentType "application/json" `
+  -Body '{"employee_id":"ADMIN-001","password":"Admin@123"}'
+$TOKEN = $login.data.token
+```
+
+On macOS or Linux:
+
+```bash
+export BASE_URL="http://localhost:8080"
+export ADMIN_LOGIN_RESPONSE="$(curl -s -X POST "$BASE_URL/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"employee_id":"ADMIN-001","password":"Admin@123"}')"
+export TOKEN="$(printf '%s' "$ADMIN_LOGIN_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')"
+```
+
+Windows curl example:
+
+```powershell
+$loginResponse = curl.exe -X POST "$BASE_URL/api/v1/auth/login" `
+  -H "Content-Type: application/json" `
+  -d '{"employee_id":"ADMIN-001","password":"Admin@123"}'
+$loginResponse
+```
+
+The response includes the JWT and confirms the current admin role:
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "<jwt>",
+    "user": {
+      "employee_id": "ADMIN-001",
+      "role": "admin",
+      "full_name": "System Admin"
+    }
+  }
+}
+```
+
+### 2. List employees
+
+```bash
+curl -X GET "$BASE_URL/api/v1/admin/employees?page=1&page_size=20&search=engineering" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+PowerShell:
+
+```powershell
+curl.exe -X GET "$BASE_URL/api/v1/admin/employees?page=1&page_size=20&search=engineering" `
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "employee_id": "EMP-001",
+        "full_name": "Test Employee",
+        "email": "test.employee@example.com",
+        "phone": "+15550000099",
+        "department": "Engineering",
+        "designation": "Developer",
+        "role": "employee",
+        "is_first_login_required": true,
+        "password_changed_at": null,
+        "created_at": "2026-10-24T12:00:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 20
+  }
+}
+```
+
+### 3. Get employee details
+
+```bash
+curl -X GET "$BASE_URL/api/v1/admin/employees/EMP-001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+PowerShell:
+
+```powershell
+curl.exe -X GET "$BASE_URL/api/v1/admin/employees/EMP-001" `
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### 4. Edit employee details
+
+Employee ID is immutable. The employee user and profile records are updated in one transaction.
+
+```bash
+curl -X PUT "$BASE_URL/api/v1/admin/employees/EMP-001" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "full_name": "Ananya Sharma",
+    "email": "ananya.sharma@example.com",
+    "phone": "+919876543210",
+    "department": "Engineering",
+    "designation": "Senior Developer"
+  }'
+```
+
+PowerShell:
+
+```powershell
+curl.exe -X PUT "$BASE_URL/api/v1/admin/employees/EMP-001" `
+  -H "Authorization: Bearer $TOKEN" `
+  -H "Content-Type: application/json" `
+  -d '{"full_name":"Ananya Sharma","email":"ananya.sharma@example.com","phone":"+919876543210","department":"Engineering","designation":"Senior Developer"}'
+```
+
+The success response contains the updated employee details.
+
+### 5. Request employee password reset
+
+This generates a new temporary password, invalidates the old password, sets `is_first_login_required=true`, and records an `admin_reset` audit entry.
+
+```bash
+curl -X POST "$BASE_URL/api/v1/admin/employees/EMP-001/password-reset" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+PowerShell:
+
+```powershell
+curl.exe -X POST "$BASE_URL/api/v1/admin/employees/EMP-001/password-reset" `
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "employee_id": "EMP-001",
+    "temporary_password": "Ab1@Cde2Xyz9",
+    "require_password_change": true,
+    "message": "Temporary password generated. The employee must change it on next login."
+  }
+}
+```
+
+The temporary password is returned once. Share it through a secure channel and do not store it in application logs.
+
+### 6. Employee completes first-login reset
+
+```bash
+curl -X POST "$BASE_URL/api/v1/auth/change-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": "EMP-001",
+    "old_password": "Ab1@Cde2Xyz9",
+    "new_password": "NewPass1!",
+    "confirm_password": "NewPass1!"
+  }'
+```
+
+The employee account is marked complete and password history records `change_type: "first_login"`.
+
 ## API testing with curl
 
 Set the base URL before running these examples:
@@ -257,43 +438,79 @@ Example response for valid location check-in:
 }
 ```
 
-## Local setup
+## Local installation and run
 
 ### Prerequisites
 
-- Go 1.22+
-- PostgreSQL 15+ installed locally on your PC
 - Git
-- Optional: Docker only if you want to build the app as a container image
+- Go 1.25 or later
+- PostgreSQL 15 or later
+- macOS: Homebrew is optional but recommended
+- Windows: PostgreSQL installer and PowerShell 5.1+
 
-### 1. Clone the repo
+### macOS installation
+
+```bash
+brew install git go postgresql@18
+brew services start postgresql@18
+export PATH="$(brew --prefix postgresql@18)/bin:$PATH"
+```
+
+Create the database and set a local password:
+
+```bash
+createuser -s postgres || true
+psql postgres -c "ALTER USER postgres PASSWORD '57hesoyam';"
+createdb -U postgres attendance_db
+```
+
+Clone and configure:
 
 ```bash
 git clone <repo-url>
 cd Attendance_Backend
+cp .env.example .env
+go mod tidy
+go run ./cmd/server
 ```
 
-### 2. Install PostgreSQL locally
+### Windows installation
 
-Install PostgreSQL on your machine and create a database named `attendance_db`.
+Install Git and Go:
 
-Example on Windows using psql:
+```powershell
+winget install --id Git.Git --exact
+winget install --id GoLang.Go --exact
+winget install --id PostgreSQL.PostgreSQL.18 --exact
+```
+
+Open a new terminal so `go`, `git`, and PostgreSQL commands are available. Create the database using SQL shell or PowerShell:
+
+```powershell
+& 'C:\Program Files\PostgreSQL\18\bin\psql.exe' -U postgres -d postgres
+```
+
+Inside `psql`:
 
 ```sql
+ALTER USER postgres PASSWORD '57hesoyam';
 CREATE DATABASE attendance_db;
+\q
 ```
 
-If needed, also create a PostgreSQL user with the same credentials used in the `.env` file.
+Clone and configure:
 
-### 3. Configure environment variables
-
-Copy the template file and update values if needed:
-
-```bash
-copy .env.example .env
+```powershell
+git clone <repo-url>
+cd Attendance_Backend
+Copy-Item .env.example .env
+go mod tidy
+go run ./cmd/server
 ```
 
-Required values in `.env`:
+### Environment file
+
+Use this as the local baseline:
 
 ```env
 APP_PORT=8080
@@ -302,28 +519,50 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=attendance_db
 DB_USER=postgres
-DB_PASSWORD=postgres
+DB_PASSWORD=57hesoyam
 JWT_SECRET=change-this-super-secret-key
 OFFICE_LATITUDE=19.0760
 OFFICE_LONGITUDE=72.8777
 ALLOWED_RADIUS_METERS=100
 ```
 
-This project uses the local PostgreSQL instance, not Docker Compose.
+Do not commit a real production JWT secret or database password.
 
-### 4. Install Go dependencies
+### Validate local startup
 
-```bash
-set PATH=%PATH%;C:\Program Files\Go\bin
-go mod tidy
+Terminal output should contain:
+
+```text
+Database migrations completed successfully.
+Attendance API running on http://localhost:8080
+Listening and serving HTTP on :8080
 ```
 
-### 5. Run the API server
+The server must keep running in this terminal.
+
+### Swagger
+
+Open:
+
+```text
+http://localhost:8080/swagger/index.html
+```
+
+The machine-readable specification is available at:
+
+```text
+http://localhost:8080/swagger/doc.json
+```
+
+### Build and test
 
 ```bash
-set PATH=%PATH%;C:\Program Files\Go\bin
-go run ./cmd/server
+go fmt ./...
+go test ./...
+go build ./...
 ```
+
+Windows and macOS use the same commands.
 
 ### 6. Health check
 
@@ -373,11 +612,34 @@ Example valid passwords:
 - Priya@2026
 - Mark!9xyz
 
+## Implementation status
+
+| Area | Status |
+|---|---|
+| Health endpoint | Complete |
+| Admin and employee login | Complete |
+| First-login password change and audit | Complete |
+| Create employee | Complete |
+| Employee list and search | Complete |
+| Employee detail | Complete |
+| Employee edit | Complete |
+| Admin password reset request | Complete |
+| JWT authorization for admin employee routes | Complete |
+| CORS for local UI | Complete |
+| Swagger | Complete |
+| `GET /api/v1/auth/me` | Pending |
+| Attendance check-in/check-out | Pending |
+| Admin attendance dashboard API | Pending |
+| Attendance reports | Pending |
+
+See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for detailed flow ownership and pending work.
+
 ## Security notes
 
 - Passwords are hashed before storing.
-- First-login password changes are required for newly created employees.
-- JWT is used for authentication.
+- Temporary passwords are returned once and should be delivered through a secure channel.
+- Admin employee administration endpoints require a JWT with `role=admin`.
+- First-login password changes are required for newly created or reset employees.
 - Attendance check-ins must pass location validation before being saved.
 
 ## Recommended next steps

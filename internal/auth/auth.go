@@ -72,6 +72,24 @@ func CreateToken(user models.User, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
+func ParseToken(tokenValue, secret string) (jwt.MapClaims, error) {
+	token, err := jwt.Parse(tokenValue, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return []byte(secret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+	return claims, nil
+}
+
 func GetJWTSecret() string {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
